@@ -365,6 +365,31 @@ describe('Access and MCP transport', () => {
 })
 
 describe('subscription lifecycle', () => {
+  it('logs only the hostname when an unapproved callback is rejected', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const service = new EventService(
+      { ...bindings, DOTS_CALLBACK_HOSTS: '' },
+      bindings.ACCESS_OWNER_SUB,
+      Date.now() + 60_000,
+    )
+    await expect(
+      service.subscribe(
+        subscribeSchema.parse({
+          ...subscribeParams,
+          delivery: { ...subscribeParams.delivery, url: `${callback}?token=private-token` },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: -32015, data: { reason: 'url_not_allowed' } })
+    expect(warn.mock.calls).toEqual([
+      [
+        'bridge.subscription.rejected',
+        { reason: 'url_not_allowed', hostname: 'receiver.example.com' },
+      ],
+    ])
+    expect(requests).toHaveLength(0)
+    expect(await bindings.SUBSCRIPTIONS.get(SUBSCRIPTION_KEY)).toBeNull()
+  })
+
   it('never grants a lifetime beyond the authenticating Access JWT', async () => {
     const expiresAt = Date.now() + 60_000
     const result = await new EventService(bindings, bindings.ACCESS_OWNER_SUB, expiresAt).subscribe(

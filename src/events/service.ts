@@ -33,9 +33,12 @@ export class EventService {
     try {
       url = trustedHttpsUrl(params.delivery.url, callbackHosts(this.env.DOTS_CALLBACK_HOSTS)).href
     } catch {
+      const hostname = new URL(params.delivery.url).hostname
+      // Callback paths and signing secrets are credentials; log only the rejected host.
+      console.warn('bridge.subscription.rejected', { reason: 'url_not_allowed', hostname })
       throw new ProtocolError(-32015, 'Callback endpoint rejected', {
         reason: 'url_not_allowed',
-        hostname: new URL(params.delivery.url).hostname,
+        hostname,
       })
     }
     const id = await subscriptionId(this.owner, url)
