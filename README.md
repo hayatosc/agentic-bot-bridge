@@ -14,13 +14,22 @@ flowchart LR
 
 DO・D1・Queueは使いません。メッセージ本文、会話履歴、OAuthトークンも保存しません。Grokの受信先はGrok Botが発行するroutine webhookです。このWorkerに受信用のGrok webhookルートを作る必要はありません。
 
+## 公開先と残りの接続設定
+
+- dots: `https://agentic-bot-bridge.hayatosc.dev/dots`
+- Grok: `https://agentic-bot-bridge.hayatosc.dev/grok`
+- Accessは`agentic-bot-bridge.hayatosc.dev`全体を1アプリで保護します。ルートや未定義パスにも未認証ではアクセスできません。
+- Workers Buildsは`hayatosc/agentic-bot-bridge`の`main`を監視し、pushから検証・ビルド・デプロイを実行します。
+
+サーバー側のKV・Access・購読暗号化鍵は設定済みです。通信を開始するには、専用Grok routineが発行する`GROK_WEBHOOK_URL`と`GROK_WEBHOOK_KEY`をWorker Secretsへ設定し、dotsの初回購読で確認した公式callback hostnameを`cloudflare.config.ts`の`DOTS_CALLBACK_HOSTS`へ追加してpushしてください。これらの値はサーバーから生成できません。GrokのOAuth redirect URIが現在の許可一覧にない場合は、クライアントが実際に使う公式URIを共通Accessアプリに追加します。
+
 ## エンドポイント
 
-| パス    | 認証                         | 機能                                                                           |
-| ------- | ---------------------------- | ------------------------------------------------------------------------------ |
-| `/`     | なし                         | 名前・バージョン                                                               |
-| `/dots` | dots用Access AUD + owner sub | `send_message` → Grok、`events/list`・`events/subscribe`・`events/unsubscribe` |
-| `/grok` | Grok用Access AUD + owner sub | `send_message` → dots                                                          |
+| パス    | 認証                       | 機能                                                                           |
+| ------- | -------------------------- | ------------------------------------------------------------------------------ |
+| `/`     | 共通Access AUD + owner sub | 名前・バージョン                                                               |
+| `/dots` | 共通Access AUD + owner sub | `send_message` → Grok、`events/list`・`events/subscribe`・`events/unsubscribe` |
+| `/grok` | 共通Access AUD + owner sub | `send_message` → dots                                                          |
 
 `/dots`はMCP 2.0（`2026-07-28`）専用です。`/grok`はMCP 2.0とSDKの旧バージョン向けstateless Streamable HTTPを受け付けます。永続HTTPセッション、旧HTTP+SSE transport、GETによる常時接続は提供しません。MCPのバージョン交渉・JSON-RPC処理・リクエストサイズ検証はSDKに任せています。
 
@@ -55,7 +64,7 @@ test/bridge.test.ts    Workers統合テスト
 
 `cf`を開発依存に固定し、`bun run dev`・`bun run build`・`bun run deploy`から呼び出します。cfはNode.jsで実行するため、直接呼ぶ場合は`bunx --no-bun cf ...`を使ってください。Bunはパッケージ管理に使用します。
 
-本番設定は`cloudflare.config.ts`が正本です。Wranglerはcfが呼び出すバンドラーとして残し、`wrangler.jsonc`はVitestのローカル実行専用です。本番のドメイン・AUD・KV IDの変更は`cloudflare.config.ts`に反映してください。
+本番設定は`cloudflare.config.ts`が正本です。Wranglerはcfが呼び出すバンドラーとして残し、`wrangler.jsonc`はVitestのローカル実行専用です。本番のドメイン・共通AUD・KV IDの変更は`cloudflare.config.ts`に反映してください。
 
 GitHubの`main`へのpushとpull requestでは、`.github/workflows/check.yml`で検証とビルドを実行します。Cloudflare Workers Buildsの本番ブランチは`main`、ルートディレクトリは`/`、ビルドコマンドは`bun run check && bun run build`、デプロイコマンドは`bunx --no-bun cf deploy --prebuilt`とします。ビルド環境ではNode.js 24、Bun 1.4.4を指定し、preview deploymentは無効にします。
 
@@ -81,11 +90,10 @@ bunx wrangler kv namespace create SUBSCRIPTIONS
 
 ### 2. Access Managed OAuth
 
-Zero TrustのAccess Applicationsに、`bridge.your-domain.com/dots`と`bridge.your-domain.com/grok`を対象とする別々のself-hosted applicationを作ります。両方でAdvanced settings → **Managed OAuth**を有効にし、自分だけが通るAllowポリシーを設定します。
+Zero TrustのAccess Applicationsに、`bridge.your-domain.com`全体を対象とするself-hosted applicationを1つ作ります。Advanced settings → **Managed OAuth**を有効にし、自分だけが通るAllowポリシーを設定します。パスごとのAccessアプリは作りません。Workerも全パスで同じJWT検証を行い、`/dots`と`/grok`は共通のAUDを使います。送信元は認証トークンの種類ではなくエンドポイントから決まります。
 
 - `ACCESS_TEAM_DOMAIN`: `https://your-team.cloudflareaccess.com`
-- `ACCESS_DOTS_AUD`: dotsアプリのAudience (AUD)
-- `ACCESS_GROK_AUD`: GrokアプリのAudience (AUD)。dotsと別の値が必須です。
+- `ACCESS_AUD`: サブドメイン全体を保護するAccessアプリのAudience (AUD)
 - `ACCESS_OWNER_SUB`: 許可するAccessユーザーのJWT `sub`。検証済みJWTまたはAccessのユーザー情報から取得し、JWT自体は保存しません。
 
 Allowed redirect URIsには、各クライアントが実際に使用する公式のOAuth callback URIを登録します。callback URIはMCP Eventsの配信先URLとは別です。Cloudflare推奨の短いaccess token lifetime（5〜15分）と長いgrant session duration（1〜2週間）を利用できます。
@@ -172,7 +180,7 @@ Accessポリシーの取り消しは、すでに発行されたJWTや実行中�
 
 ## 検証範囲
 
-テストはAccess JWTの検証、AUD分離、MCP 2.0 discovery、公式SDKクライアントのmodern/legacy接続、購読の保存・更新・解除、署名・鍵交換・期限、HTTPエラー分類、リダイレクト拒否、本文制限を確認します。
+テストはAccess JWTの検証、サブドメイン全体の共通認証、MCP 2.0 discovery、公式SDKクライアントのmodern/legacy接続、購読の保存・更新・解除、署名・鍵交換・期限、HTTPエラー分類、リダイレクト拒否、本文制限を確認します。
 
 Accessの実際のOAuth画面、dotsのイベント購読、Grok Botのroutine実行は外部アカウントが必要で、自動テストの対象外です。本番では、双方から固有のテストメッセージを送り、相手の実際の回答と`final=true`での終了を確認してください。HTTP 200だけでは実エージェント間の受け渡し完了を確認できません。
 

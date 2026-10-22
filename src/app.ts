@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
 
 import type { Env } from './env'
+import { accessAuth } from './lib/access'
 import { mcpRoutes } from './mcp/routes'
 
 const app = new Hono<Env>()
+  .use('*', accessAuth())
   .get('/', (c) => c.json({ name: 'agentic-bot-bridge', version: '0.1.0' }))
   .route('/dots', mcpRoutes('dots'))
   .route('/grok', mcpRoutes('grok'))

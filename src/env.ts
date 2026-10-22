@@ -3,8 +3,7 @@ export type Agent = 'dots' | 'grok'
 export interface Bindings {
   SUBSCRIPTIONS: KVNamespace
   ACCESS_TEAM_DOMAIN: string
-  ACCESS_DOTS_AUD: string
-  ACCESS_GROK_AUD: string
+  ACCESS_AUD: string
   ACCESS_OWNER_SUB: string
   PUBLIC_ORIGIN: string
   DOTS_CALLBACK_HOSTS: string

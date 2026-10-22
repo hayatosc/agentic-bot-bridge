@@ -11,8 +11,7 @@
   "vars": {
     "PUBLIC_ORIGIN": "https://bridge.example.com",
     "ACCESS_TEAM_DOMAIN": "https://YOUR-TEAM.cloudflareaccess.com",
-    "ACCESS_DOTS_AUD": "",
-    "ACCESS_GROK_AUD": "",
+    "ACCESS_AUD": "",
     "ACCESS_OWNER_SUB": "",
     "DOTS_CALLBACK_HOSTS": "",
   },

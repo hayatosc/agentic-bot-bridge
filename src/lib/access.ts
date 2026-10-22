@@ -1,7 +1,7 @@
 import { createMiddleware } from 'hono/factory'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 
-import type { Agent, Env } from '../env'
+import type { Env } from '../env'
 import { getAccessConfig } from './config'
 
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
@@ -14,7 +14,7 @@ function getKeys(domain: string) {
   return keys
 }
 
-export function accessAuth(agent: Agent) {
+export function accessAuth() {
   return createMiddleware<Env>(async (c, next) => {
     const config = getAccessConfig(c.env)
     if (!config.success) return c.json({ error: 'Access configuration is incomplete' }, 503)
@@ -25,11 +25,10 @@ export function accessAuth(agent: Agent) {
     }
     const token = c.req.header('Cf-Access-Jwt-Assertion')
     if (!token) return c.json({ error: 'Unauthorized' }, 401)
-    const audience = agent === 'dots' ? config.data.ACCESS_DOTS_AUD : config.data.ACCESS_GROK_AUD
     try {
       const { payload } = await jwtVerify(token, getKeys(ACCESS_TEAM_DOMAIN), {
         issuer: ACCESS_TEAM_DOMAIN,
-        audience,
+        audience: config.data.ACCESS_AUD,
         algorithms: ['RS256'],
         requiredClaims: ['sub', 'exp', 'iat'],
       })

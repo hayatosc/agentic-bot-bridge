@@ -28,8 +28,7 @@ const replacement = `whsec_${toBase64(new Uint8Array(32).fill(8))}`
 const bindings: Bindings = {
   SUBSCRIPTIONS: env.SUBSCRIPTIONS,
   ACCESS_TEAM_DOMAIN: issuer,
-  ACCESS_DOTS_AUD: 'dots-audience',
-  ACCESS_GROK_AUD: 'grok-audience',
+  ACCESS_AUD: 'bridge-audience',
   ACCESS_OWNER_SUB: 'owner-subject',
   PUBLIC_ORIGIN: origin,
   DOTS_CALLBACK_HOSTS: 'receiver.example.com',
@@ -57,14 +56,13 @@ let requests: Request[]
 let receiver: (request: Request) => Promise<Response>
 
 async function token(
-  agent: Agent,
   options: { subject?: string; audience?: string; issuer?: string; expiry?: number } = {},
 ) {
   return new SignJWT({})
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setSubject(options.subject ?? bindings.ACCESS_OWNER_SUB)
     .setIssuer(options.issuer ?? issuer)
-    .setAudience(options.audience ?? `${agent}-audience`)
+    .setAudience(options.audience ?? bindings.ACCESS_AUD)
     .setIssuedAt()
     .setExpirationTime(options.expiry ?? Math.floor(Date.now() / 1000) + 3600)
     .sign(signingKey)
@@ -88,7 +86,7 @@ async function call(
         ...(method === 'tools/call' && typeof params.name === 'string'
           ? { 'MCP-Name': params.name }
           : {}),
-        'Cf-Access-Jwt-Assertion': await token(agent),
+        'Cf-Access-Jwt-Assertion': await token(),
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -171,6 +169,20 @@ afterEach(() => {
 })
 
 describe('Access and MCP transport', () => {
+  it('requires the same Access authentication on every path, including the root', async () => {
+    for (const path of ['/', '/dots', '/grok', '/unknown']) {
+      expect((await app.request(`${origin}${path}`, {}, bindings)).status).toBe(401)
+    }
+    const assertion = await token()
+    const root = await app.request(
+      origin,
+      { headers: { 'Cf-Access-Jwt-Assertion': assertion } },
+      bindings,
+    )
+    expect(root.status).toBe(200)
+    expect(await root.json()).toMatchObject({ name: 'agentic-bot-bridge' })
+  })
+
   it.each(['dots', 'grok'] as const)(
     'connects the official SDK client over HTTP to %s',
     async (agent) => {
@@ -180,7 +192,7 @@ describe('Access and MCP transport', () => {
           versionNegotiation: { mode: agent === 'dots' ? { pin: '2026-07-28' } : 'legacy' },
         },
       )
-      const assertion = await token(agent)
+      const assertion = await token()
       const transport = new StreamableHTTPClientTransport(new URL(`${origin}/${agent}`), {
         fetch: (input, init) => {
           const request = new Request(input, init)
@@ -246,13 +258,13 @@ describe('Access and MCP transport', () => {
   ])('rejects %s credentials before parsing or sending', async (_name, kind, status) => {
     const assertion =
       kind === 'audience'
-        ? await token('grok')
+        ? await token({ audience: 'unrelated-application' })
         : kind === 'owner'
-          ? await token('dots', { subject: 'another-owner' })
+          ? await token({ subject: 'another-owner' })
           : kind === 'issuer'
-            ? await token('dots', { issuer: 'https://other.cloudflareaccess.com' })
+            ? await token({ issuer: 'https://other.cloudflareaccess.com' })
             : kind === 'expired'
-              ? await token('dots', { expiry: Math.floor(Date.now() / 1000) - 60 })
+              ? await token({ expiry: Math.floor(Date.now() / 1000) - 60 })
               : kind
     const response = await app.request(
       `${origin}/dots`,
@@ -263,18 +275,15 @@ describe('Access and MCP transport', () => {
     expect(requests).toHaveLength(0)
   })
 
-  it('fails closed when Access is unconfigured or both audiences coincide', async () => {
-    for (const override of [
-      { ACCESS_TEAM_DOMAIN: '' },
-      { ACCESS_GROK_AUD: bindings.ACCESS_DOTS_AUD },
-    ]) {
+  it('fails closed when the shared Access configuration is missing', async () => {
+    for (const override of [{ ACCESS_TEAM_DOMAIN: '' }, { ACCESS_AUD: '' }]) {
       const response = await app.request(`${origin}/dots`, {}, { ...bindings, ...override })
       expect(response.status).toBe(503)
     }
   })
 
   it('rejects alternate hostnames and foreign browser origins', async () => {
-    const assertion = await token('dots')
+    const assertion = await token()
     expect(
       (
         await app.request(
@@ -308,7 +317,7 @@ describe('Access and MCP transport', () => {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
-          'Cf-Access-Jwt-Assertion': await token('grok'),
+          'Cf-Access-Jwt-Assertion': await token(),
         },
         body: JSON.stringify({
           jsonrpc: '2.0',
@@ -330,7 +339,7 @@ describe('Access and MCP transport', () => {
       (
         await app.request(
           `${origin}/grok`,
-          { headers: { 'Cf-Access-Jwt-Assertion': await token('grok') } },
+          { headers: { 'Cf-Access-Jwt-Assertion': await token() } },
           bindings,
         )
       ).status,
@@ -343,7 +352,7 @@ describe('Access and MCP transport', () => {
       {
         method: 'POST',
         headers: {
-          'Cf-Access-Jwt-Assertion': await token('grok'),
+          'Cf-Access-Jwt-Assertion': await token(),
           'Content-Type': 'application/json',
           'Content-Length': '1',
         },
