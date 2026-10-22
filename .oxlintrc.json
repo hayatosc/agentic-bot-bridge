@@ -2,7 +2,7 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc"],
   "categories": { "correctness": "error" },
-  "ignorePatterns": ["dist/**", "node_modules/**", ".wrangler/**"],
+  "ignorePatterns": ["dist/**", "node_modules/**", ".wrangler/**", ".cloudflare/**"],
   "rules": {
     "typescript/no-explicit-any": "error",
     "typescript/no-unsafe-type-assertion": "error",

@@ -26,12 +26,13 @@ DO・D1・Queueは使いません。メッセージ本文、会話履歴、OAuth
 
 ## 開発
 
-Node.js 22.12以上とBunを用意してください。動作確認環境はNode.js 24、Bun 1.4.4です。
+Node.js 22.18以上とBunを用意してください。動作確認環境はNode.js 24、Bun 1.4.4です。
 
 ```sh
 bun install --frozen-lockfile
 bun run check
-bunx wrangler deploy --dry-run
+bun run build
+bunx --no-bun cf deploy --dry-run
 ```
 
 `bun run check`はTypeScript 7の`tsc --noEmit`、Oxlint、型情報付きOxlint、Oxfmt、Vitestを実行します。テストはCloudflare公式Vitestプラグインでworkerd上に起動し、KVとWeb Cryptoは実装を使い、外部HTTPSだけをモックします。
@@ -50,6 +51,16 @@ test/bridge.test.ts    Workers統合テスト
 
 `bun run dev`でも認証を省略しません。通常の検証はテストを使ってください。ローカルHTTPから認証を無効化して試すための設定はありません。
 
+## CLIとGit連携
+
+`cf`を開発依存に固定し、`bun run dev`・`bun run build`・`bun run deploy`から呼び出します。cfはNode.jsで実行するため、直接呼ぶ場合は`bunx --no-bun cf ...`を使ってください。Bunはパッケージ管理に使用します。
+
+本番設定は`cloudflare.config.ts`が正本です。Wranglerはcfが呼び出すバンドラーとして残し、`wrangler.jsonc`はVitestのローカル実行専用です。本番のドメイン・AUD・KV IDの変更は`cloudflare.config.ts`に反映してください。
+
+GitHubの`main`へのpushとpull requestでは、`.github/workflows/check.yml`で検証とビルドを実行します。Cloudflare Workers Buildsの本番ブランチは`main`、ルートディレクトリは`/`、ビルドコマンドは`bun run check && bun run build`、デプロイコマンドは`bunx --no-bun cf deploy --prebuilt`とします。ビルド環境ではNode.js 24、Bun 1.4.4を指定し、preview deploymentは無効にします。
+
+GitHub Actionsは検証専用です。CloudflareのGitHub接続・Workers Builds設定が完了して初めてpush時の自動デプロイが有効になります。GitHubにはCloudflare APIトークンやWorker Secretsを置きません。
+
 ## Cloudflareの設定
 
 このリポジトリには実アカウントの設定や秘密情報を含めていません。以下は利用者が本番環境を準備する手順です。
@@ -60,15 +71,13 @@ test/bridge.test.ts    Workers統合テスト
 bunx wrangler kv namespace create SUBSCRIPTIONS
 ```
 
-返されたnamespace IDを`wrangler.jsonc`の`kv_namespaces[0].id`に設定します。続いて自分のドメインを`PUBLIC_ORIGIN`に指定し、同じホストのCustom Domainを追加します。URL末尾の`/`は付けません。
+返されたnamespace IDを`cloudflare.config.ts`の`worker.env.SUBSCRIPTIONS`の`id`に設定します。続いて自分のドメインを`PUBLIC_ORIGIN`に指定し、同じホストのCustom Domainを追加します。URL末尾の`/`は付けません。
 
 ```json
-"routes": [
-  { "pattern": "bridge.your-domain.com", "custom_domain": true }
-]
+"domains": ["bridge.your-domain.com"]
 ```
 
-`workers_dev: false`と`preview_urls: false`は維持してください。Workerも`PUBLIC_ORIGIN`とJWTを検証するため、別のホスト経由で認証を省略できません。ブラウザーの`Origin`が付いている場合は同一originだけを許可します。
+`workersDev: false`と`previewUrls: false`は維持してください。Workerも`PUBLIC_ORIGIN`とJWTを検証するため、別のホスト経由で認証を省略できません。ブラウザーの`Origin`が付いている場合は同一originだけを許可します。
 
 ### 2. Access Managed OAuth
 
@@ -89,11 +98,11 @@ Allowed redirect URIsには、各クライアントが実際に使用する公�
 
 Grok Botで専用のwebhook起動routineを作り、発行されたPOST URLとBearer keyを登録します。[Cursor Grok Bot routines](https://cursor.com/help/grok-bot/routines)のwebhookを対象にしています。grok.com AutomationsのHMAC webhookとは異なります。
 
-```sh
-bunx wrangler secret put GROK_WEBHOOK_URL
-bunx wrangler secret put GROK_WEBHOOK_KEY
-bunx wrangler secret put SUBSCRIPTION_ENCRYPTION_KEY
-```
+CloudflareダッシュボードのWorker → Settings → Variables and Secretsで、次の3つをSecretとして設定します。CLIで一括登録する場合は、Git対象外のJSONファイルを用意し、`bunx --no-bun cf deploy --secrets-file /path/to/secrets.json`を使います。ファイルにはこの3つの名前と値だけを含め、API認証トークンは含めません。
+
+- `GROK_WEBHOOK_URL`
+- `GROK_WEBHOOK_KEY`
+- `SUBSCRIPTION_ENCRYPTION_KEY`
 
 `SUBSCRIPTION_ENCRYPTION_KEY`には、暗号学的乱数32バイトを標準Base64にした値を秘密入力欄から設定します。購読レコード全体をAES-256-GCMで暗号化する鍵です。購読ごとのwebhook secretをWorkers Secretsへ書き換える処理はありません。暗号化鍵を変更する際は、先に購読を解除してKVの旧レコードを削除し、変更後に再購読してください。旧鍵を保持したまま移行する機構はありません。
 
