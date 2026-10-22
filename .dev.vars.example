@@ -1,0 +1,4 @@
+# Set real local values here after copying to .dev.vars. This file contains no credentials.
+GROK_WEBHOOK_URL="https://your-grok-webhook.example.com/your-routine"
+GROK_WEBHOOK_KEY=""
+SUBSCRIPTION_ENCRYPTION_KEY=""
