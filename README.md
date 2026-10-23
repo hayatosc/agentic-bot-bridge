@@ -21,7 +21,7 @@ DO・D1・Queueは使いません。メッセージ本文、会話履歴、OAuth
 - Accessは`agentic-bot-bridge.hayatosc.dev`全体を1アプリで保護します。ルートや未定義パスにも未認証ではアクセスできません。
 - Workers Buildsは`hayatosc/agentic-bot-bridge`の`main`を監視し、pushから検証・ビルド・デプロイを実行します。
 
-サーバー側のKV・Access・購読暗号化鍵・GrokのWebhook URLとキーは設定済みです。通信を開始するには、dotsの初回購読で確認した公式callback hostnameを`cloudflare.config.ts`の`DOTS_CALLBACK_HOSTS`へ追加してpushしてください。このhostnameはサーバーから生成できません。GrokのOAuth redirect URIが現在の許可一覧にない場合は、クライアントが実際に使う公式URIを共通Accessアプリに追加します。
+サーバー側のKV・Access・購読暗号化鍵・GrokのWebhook URLとキーは設定済みです。認証済みのdots購読要求で観測したcallback hostname `connectors.api.openai.com`を許可リストに登録しています。次はdotsで購読を再作成し、callback検証と保存の成功を確認してください。GrokのOAuth redirect URIが現在の許可一覧にない場合は、クライアントが実際に使う公式URIを共通Accessアプリに追加します。
 
 ## エンドポイント
 
