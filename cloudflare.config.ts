@@ -11,7 +11,15 @@ export default defineConfig({
     domains: ['agentic-bot-bridge.hayatosc.dev'],
     previewUrls: false,
     observability: {
-      enabled: false,
+      enabled: true,
+      redactQueryString: true,
+      logs: {
+        enabled: true,
+        headSamplingRate: 1,
+        invocationLogs: false,
+        persist: true,
+      },
+      traces: { enabled: false },
     },
     env: {
       PUBLIC_ORIGIN: bindings.text('https://agentic-bot-bridge.hayatosc.dev'),

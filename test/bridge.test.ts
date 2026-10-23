@@ -145,6 +145,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  vi.spyOn(console, 'info').mockImplementation(() => {})
   await bindings.SUBSCRIPTIONS.delete(SUBSCRIPTION_KEY)
   requests = []
   receiver = async (request) => {
@@ -169,6 +170,21 @@ afterEach(() => {
 })
 
 describe('Access and MCP transport', () => {
+  it('records only the route and response status for request diagnostics', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const response = await app.request(
+      `${origin}/dots?token=private-query`,
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer private-token' },
+        body: 'private-message',
+      },
+      bindings,
+    )
+    expect(response.status).toBe(401)
+    expect(info.mock.calls).toEqual([['bridge.request.completed', { route: '/dots', status: 401 }]])
+  })
+
   it('requires the same Access authentication on every path, including the root', async () => {
     for (const path of ['/', '/dots', '/grok', '/unknown']) {
       expect((await app.request(`${origin}${path}`, {}, bindings)).status).toBe(401)

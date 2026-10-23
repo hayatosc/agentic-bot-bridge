@@ -118,6 +118,8 @@ CloudflareダッシュボードのWorker → Settings → Variables and Secrets�
 
 ### 4. dots配信先の許可
 
+購読接続の診断中はWorkers Logsを有効にしています。アプリの診断出力は固定のルート名・HTTP応答ステータス、およびcallback拒否時の理由・ホスト名に限定します。本文、認証ヘッダー、callback URL全体、署名キーは出力しません。Invocation Logsとtracesは無効、リクエストURLのクエリはマスクします。CLIのライブログ接続が終了しても、保存された診断ログをCloudflare側で確認できます。
+
 `DOTS_CALLBACK_HOSTS`に、ChatGPTが購読要求で指定する実際のcallback hostnameをカンマ区切りで登録します。ワイルドカードやURL全体は指定しません。未許可の購読は`-32015`、`data.reason: "url_not_allowed"`となり、エラーにはホスト名だけを返します。そのホストが公式の配信先であると確認してから追加し、再購読します。
 
 通信先はHTTPS・ポート443・完全一致したホストに限定し、認証情報付きURL・フラグメント・IPリテラル・ローカル名を拒否します。検証リクエストと実イベントの両方でリダイレクトを追いません。`global_fetch_strictly_public`も有効です。
