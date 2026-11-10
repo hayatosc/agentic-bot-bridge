@@ -169,7 +169,7 @@ dotsでは`message.created`を`arguments: {}`で購読します。このサー�
 - 同一owner・正規化済みcallback URL・event名・argumentsから安定したsubscription IDを作ります。フィルターは空オブジェクトだけなので、そのままcanonical JSONになります。
 - 初回はStandard Webhooks HMAC-SHA256で署名した単発challengeを送り、2xxと定時間比較によるchallenge一致を確認してから保存します。失敗は`-32015`です。
 - 同じowner・URL・secretでの成功検証は購読内で5分間再利用します。secret変更時は再検証します。
-- 有効期限は「要求TTL（省略・nullは24時間）」「24時間」「購読時のAccess JWT有効期限」の最短です。`refreshBefore`までに購読更新が必要です。JWT期限までに新しい認証を伴う更新がなければ配信を停止します。
+- 有効期限は「要求TTL（省略・nullは30日）」「30日」「購読時のAccess JWT有効期限」の最短です。`refreshBefore`までに購読更新が必要です。JWT期限までに新しい認証を伴う更新がなければ配信を停止します。
 - KVのTTLに加え、各送信前に保存した期限とownerを照合します。KVの最短TTLより短い購読もアプリ側で正しい期限を守ります。
 - signing secretは`whsec_` + Base64の24〜64バイト。交換後5分間は新旧の鍵で署名し、その間のさらに別の鍵への交換は拒否します。
 - 配信は1リクエスト1イベントです。本文は一度だけJSON化し、実際に送るバイト列に署名します。eventIdは`webhook-id`と一致します。

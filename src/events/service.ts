@@ -9,7 +9,7 @@ import { EVENT_NAME } from './schema'
 import { SubscriptionStore } from './store'
 import { verifyCallback } from './webhook'
 
-const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000
+const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const VERIFICATION_CACHE_MS = 5 * 60 * 1000
 const ROTATION_WINDOW_MS = 5 * 60 * 1000
 

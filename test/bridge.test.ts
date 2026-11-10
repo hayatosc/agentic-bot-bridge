@@ -406,12 +406,43 @@ describe('subscription lifecycle', () => {
     expect(await bindings.SUBSCRIPTIONS.get(SUBSCRIPTION_KEY)).toBeNull()
   })
 
-  it('never grants a lifetime beyond the authenticating Access JWT', async () => {
+  it.each([
+    { label: 'omitted', ttl: {}, expectedTtlMs: 2_592_000_000 },
+    { label: 'null', ttl: { ttlMs: null }, expectedTtlMs: 2_592_000_000 },
+    { label: 'one minute', ttl: { ttlMs: 60_000 }, expectedTtlMs: 60_000 },
+    { label: 'two days', ttl: { ttlMs: 172_800_000 }, expectedTtlMs: 172_800_000 },
+    { label: '30 days', ttl: { ttlMs: 2_592_000_000 }, expectedTtlMs: 2_592_000_000 },
+    { label: 'over 30 days', ttl: { ttlMs: 2_678_400_000 }, expectedTtlMs: 2_592_000_000 },
+  ])('grants the expected lifetime for $label TTL', async ({ ttl, expectedTtlMs }) => {
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const put = vi.spyOn(bindings.SUBSCRIPTIONS, 'put')
+    const result = await new EventService(
+      bindings,
+      bindings.ACCESS_OWNER_SUB,
+      now + 5_184_000_000,
+    ).subscribe(subscribeSchema.parse({ ...subscribeParams, ...ttl }))
+    expect(Date.parse(result.refreshBefore)).toBe(now + expectedTtlMs)
+    expect(await new SubscriptionStore(bindings).read()).toMatchObject({
+      expiresAt: now + expectedTtlMs,
+    })
+    expect(put).toHaveBeenCalledWith(SUBSCRIPTION_KEY, expect.any(String), {
+      expirationTtl: expectedTtlMs / 1000,
+    })
+  })
+
+  it.each([
+    { label: 'omitted', ttl: {} },
+    { label: 'null', ttl: { ttlMs: null } },
+    { label: 'requested', ttl: { ttlMs: 172_800_000 } },
+    { label: 'over 30 days', ttl: { ttlMs: 2_678_400_000 } },
+  ])('clamps $label TTL to the authenticating Access JWT expiry', async ({ ttl }) => {
     const expiresAt = Date.now() + 60_000
     const result = await new EventService(bindings, bindings.ACCESS_OWNER_SUB, expiresAt).subscribe(
-      subscribeSchema.parse({ ...subscribeParams, ttlMs: null }),
+      subscribeSchema.parse({ ...subscribeParams, ...ttl }),
     )
     expect(Date.parse(result.refreshBefore)).toBe(expiresAt)
+    expect(await new SubscriptionStore(bindings).read()).toMatchObject({ expiresAt })
   })
 
   it('verifies a signed challenge and stores only an encrypted subscription', async () => {
